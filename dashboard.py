@@ -1,50 +1,93 @@
 import streamlit as st
 from ultralytics import YOLO
-import tensorflow as tf
-from tensorflow.keras.preprocessing import image
-import numpy as np
 from PIL import Image
+import numpy as np
 import cv2
 
 # ==========================
-# Load Models
+# KONFIGURASI DASAR
+# ==========================
+st.set_page_config(
+    page_title="🧩 YOLOv8 Object Detection Dashboard",
+    page_icon="🤖",
+    layout="wide"
+)
+
+st.markdown(
+    """
+    <style>
+    .main {
+        background-color: #F9FAFB;
+    }
+    h1, h2, h3 {
+        color: #1E3A8A;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ==========================
+# LOAD MODEL
 # ==========================
 @st.cache_resource
-def load_models():
-    yolo_model = YOLO("model/2208108010063_siti reva retha_laporan 4_pemograman big data_shift p3.pt")  # Model deteksi objek
-    classifier = tf.keras.models.load_model("model/model_reva_laporan 2.h5")  # Model klasifikasi
-    return yolo_model, classifier
+def load_model():
+    model_path = "model/2208108010063_siti_reva_retha_laporan4_pemograman_big_data_shift_p3.pt"
+    model = YOLO(model_path)
+    return model
 
-yolo_model, classifier = load_models()
+try:
+    yolo_model = load_model()
+    st.sidebar.success("✅ Model YOLOv8 berhasil dimuat.")
+except Exception as e:
+    st.sidebar.error(f"❌ Gagal memuat model: {e}")
+    st.stop()
 
 # ==========================
 # UI
 # ==========================
-st.title("🧠 Image Classification & Object Detection App")
+st.title("🧠 Smart Vision Dashboard (YOLOv8)")
+st.write("Aplikasi ini menggunakan **YOLOv8** untuk mendeteksi objek secara otomatis dari gambar yang diunggah.")
+st.sidebar.header("⚙️ Pengaturan")
 
-menu = st.sidebar.selectbox("Pilih Mode:", ["Deteksi Objek (YOLO)", "Klasifikasi Gambar"])
+uploaded_file = st.file_uploader("📤 Unggah Gambar", type=["jpg", "jpeg", "png"])
 
-uploaded_file = st.file_uploader("Unggah Gambar", type=["jpg", "jpeg", "png"])
-
+# ==========================
+# PROSES DETEKSI
+# ==========================
 if uploaded_file is not None:
-    img = Image.open(uploaded_file)
-    st.image(img, caption="Gambar yang Diupload", use_container_width=True)
+    # Baca gambar
+    img = Image.open(uploaded_file).convert("RGB")
 
-    if menu == "Deteksi Objek (YOLO)":
-        # Deteksi objek
-        results = yolo_model(img)
-        result_img = results[0].plot()  # hasil deteksi (gambar dengan box)
-        st.image(result_img, caption="Hasil Deteksi", use_container_width=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.image(img, caption="📷 Gambar Asli", use_container_width=True)
 
-    elif menu == "Klasifikasi Gambar":
-        # Preprocessing
-        img_resized = img.resize((224, 224))  # sesuaikan ukuran dengan model kamu
-        img_array = image.img_to_array(img_resized)
-        img_array = np.expand_dims(img_array, axis=0)
-        img_array = img_array / 255.0
+    with col2:
+        st.subheader("🔍 Hasil Deteksi (YOLOv8)")
+        with st.spinner("🚀 Sedang mendeteksi objek..."):
+            results = yolo_model(img)
+            result_img = results[0].plot()  # Hasil dengan bounding box
 
-        # Prediksi
-        prediction = classifier.predict(img_array)
-        class_index = np.argmax(prediction)
-        st.write("### Hasil Prediksi:", class_index)
-        st.write("Probabilitas:", np.max(prediction))
+        # Tampilkan hasil
+        st.image(result_img, caption="🧩 Gambar dengan Bounding Box", use_container_width=True)
+
+        # Tampilkan daftar objek yang terdeteksi
+        boxes = results[0].boxes
+        if boxes is not None and len(boxes) > 0:
+            st.markdown("### 📊 Objek yang Terdeteksi:")
+            for i, box in enumerate(boxes):
+                label = yolo_model.names[int(box.cls)]
+                conf = float(box.conf)
+                st.write(f"{i+1}. **{label}** ({conf:.2%})")
+        else:
+            st.warning("Tidak ada objek terdeteksi.")
+
+else:
+    st.info("📁 Silakan unggah gambar untuk mulai deteksi objek.")
+
+# ==========================
+# FOOTER
+# ==========================
+st.markdown("---")
+st.caption("👩‍💻 Dibuat oleh **Siti Reva Retha** — Dashboard YOLOv8 Object Detection dengan Streamlit.")
