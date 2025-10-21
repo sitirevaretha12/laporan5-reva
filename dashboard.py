@@ -1,181 +1,214 @@
-# =========================================================
-# DASHBOARD PENJUALAN — Tema Langit Malam ✨
-# =========================================================
 import streamlit as st
-import pandas as pd
+import tensorflow as tf
+from tensorflow.keras.preprocessing import image
+import numpy as np
+from PIL import Image, ImageOps, ImageFilter
+import glob, os
 
-# coba import Plotly (interaktif), fallback ke Matplotlib
+# Optional YOLO import
 try:
-    import plotly.express as px
-    PLOTLY_AVAILABLE = True
+    from ultralytics import YOLO
+    ULTRALYTICS_AVAILABLE = True
 except Exception:
-    import matplotlib.pyplot as plt
-    PLOTLY_AVAILABLE = False
+    ULTRALYTICS_AVAILABLE = False
 
-# -------------------------------
+# ======================
 # PAGE CONFIG
-# -------------------------------
+# ======================
 st.set_page_config(
-    page_title="🌙 NightSky Dashboard Penjualan",
-    page_icon="🌌",
+    page_title="🌙☀️ Bulan & Matahari Vision",
+    page_icon="🌞🌙",
     layout="wide"
 )
 
-# -------------------------------
-# CSS (tema langit malam)
-# -------------------------------
+# ======================
+# CUSTOM CSS (Night & Day theme + Glassmorphism)
+# ======================
 st.markdown("""
 <style>
-    .stApp {
-        background: linear-gradient(135deg, #1e1e2f 0%, #2c2c54 50%, #202040 100%);
-        color: #e0e0e0;
-        font-family: 'Poppins', sans-serif;
-    }
-    .main-title {
-        text-align: center;
-        color: #cddafd;
-        font-size: 38px;
-        font-weight: 700;
-        padding: 10px 0;
-    }
-    .sub {
-        text-align: center;
-        color: #9abaff;
-        font-size: 18px;
-        margin-bottom: 30px;
-    }
-    .metric-box {
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        padding: 12px;
-        text-align: center;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-    }
+.stApp {
+    background: linear-gradient(135deg, #0b1d51 0%, #1a2b64 40%, #f9e6d3 100%);
+    font-family: 'Poppins', sans-serif;
+    color: #ffffff;
+}
+h1, h2, h3, h4 { color: #ffdd59; font-weight: 700; }
+.block-container { padding-top: 1rem; }
+.title-box {
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    border-radius: 20px;
+    padding: 25px;
+    text-align: center;
+    margin-bottom: 20px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+}
+.mode-box {
+    background: rgba(255,255,255,0.1);
+    padding: 15px;
+    border-radius: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+.result-box {
+    background: rgba(255,255,255,0.15);
+    padding: 20px;
+    border-radius: 18px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+}
+footer {
+    text-align: center;
+    color: #ffdd59;
+    margin-top: 40px;
+    font-size: 14px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------
-# TITLE
-# -------------------------------
-st.markdown("<div class='main-title'>🌌 NightSky Dashboard Penjualan</div>", unsafe_allow_html=True)
-st.markdown("<div class='sub'>Visualisasi Penjualan, Profit, dan Tren Bulanan dengan Gaya Langit Malam</div>", unsafe_allow_html=True)
+# ======================
+# HELPER FUNCTIONS
+# ======================
+MODEL_FOLDER = "model"
 
-# -------------------------------
-# LOAD DATASET
-# -------------------------------
-try:
-    df = pd.read_csv("superstore_sales.csv")
-except FileNotFoundError:
-    st.error("⚠️ File `superstore_sales.csv` tidak ditemukan. Letakkan file CSV di folder yang sama dengan `dashboard.py`.")
-    st.stop()
+def find_first(pattern):
+    files = glob.glob(os.path.join(MODEL_FOLDER, pattern))
+    return files[0] if files else None
 
-# cek kolom penting
-if not {'Sales','Profit'}.issubset(df.columns):
-    st.warning("Kolom 'Sales' atau 'Profit' tidak ditemukan. Pastikan dataset kamu sesuai format Superstore.")
-    st.stop()
+@st.cache_resource
+def load_classifier():
+    path = find_first("*.h5")
+    if not path:
+        return None, "Model .h5 tidak ditemukan"
+    try:
+        model = tf.keras.models.load_model(path)
+        return model, f"Dimuat dari {path}"
+    except Exception as e:
+        return None, str(e)
 
-# -------------------------------
-# SIDEBAR FILTER
-# -------------------------------
-st.sidebar.header("🔎 Filter Data")
+@st.cache_resource
+def load_yolo():
+    if not ULTRALYTICS_AVAILABLE:
+        return None, "Ultralytics tidak tersedia"
+    path = find_first("*.pt")
+    if not path:
+        return None, "Model YOLO (.pt) tidak ditemukan"
+    try:
+        model = YOLO(path)
+        return model, f"Dimuat dari {path}"
+    except Exception as e:
+        return None, str(e)
 
-if 'Region' in df.columns:
-    region_list = df['Region'].dropna().unique().tolist()
-    selected_regions = st.sidebar.multiselect("Pilih Region", region_list, default=region_list)
-    df = df[df['Region'].isin(selected_regions)]
+classifier, cls_info = load_classifier()
+yolo, yolo_info = load_yolo()
 
-if 'Category' in df.columns:
-    cat_list = df['Category'].dropna().unique().tolist()
-    selected_cats = st.sidebar.multiselect("Pilih Kategori", cat_list, default=cat_list)
-    df = df[df['Category'].isin(selected_cats)]
+# ======================
+# CLASS LABELS & INFO
+# ======================
+class_names = ["bulan", "matahari"]
 
-# -------------------------------
-# KPI Cards
-# -------------------------------
-total_sales = df['Sales'].sum()
-total_profit = df['Profit'].sum()
-avg_discount = df['Discount'].mean() if 'Discount' in df.columns else 0
+celestial_info = {
+    "bulan": {"nama": "🌙 Bulan", "deskripsi": "Satelit alami Bumi, memantulkan cahaya Matahari.",
+              "fakta": "Bulan mengatur pasang surut air laut dan muncul dalam berbagai fase."},
+    "matahari": {"nama": "☀️ Matahari", "deskripsi": "Bintang pusat Tata Surya, sumber energi utama Bumi.",
+                 "fakta": "Matahari menyediakan cahaya dan panas yang memungkinkan kehidupan di Bumi."}
+}
 
-col1, col2, col3 = st.columns(3)
-col1.markdown(f"<div class='metric-box'><h4>Total Penjualan</h4><h2>${total_sales:,.0f}</h2></div>", unsafe_allow_html=True)
-col2.markdown(f"<div class='metric-box'><h4>Total Profit</h4><h2>${total_profit:,.0f}</h2></div>", unsafe_allow_html=True)
-col3.markdown(f"<div class='metric-box'><h4>Rata-rata Diskon</h4><h2>{avg_discount*100:.1f}%</h2></div>", unsafe_allow_html=True)
+def preprocess_image(img, model):
+    try:
+        input_shape = model.input_shape[1:3]
+    except:
+        input_shape = (224, 224)
+    img_resized = img.resize(input_shape)
+    arr = image.img_to_array(img_resized)
+    arr = np.expand_dims(arr, axis=0) / 255.0
+    return arr
 
-st.markdown("---")
+def predict_image(model, pil_img):
+    arr = preprocess_image(pil_img, model)
+    preds = model.predict(arr)
+    idx = np.argmax(preds)
+    label = class_names[idx] if idx < len(class_names) else "unknown"
+    conf = float(np.max(preds))
+    return label, conf
 
-# -------------------------------
-# CHART 1: Sales per Category
-# -------------------------------
-st.subheader("📊 Penjualan per Kategori")
-if 'Category' in df.columns:
-    data_cat = df.groupby('Category', as_index=False)['Sales'].sum().sort_values('Sales', ascending=False)
-    if PLOTLY_AVAILABLE:
-        fig1 = px.bar(
-            data_cat, x='Category', y='Sales',
-            color='Category',
-            title="Total Penjualan per Kategori",
-            color_discrete_sequence=px.colors.qualitative.Prism
-        )
-        st.plotly_chart(fig1, use_container_width=True)
-    else:
-        fig, ax = plt.subplots()
-        ax.bar(data_cat['Category'], data_cat['Sales'], color='skyblue')
-        ax.set_title("Total Penjualan per Kategori")
-        st.pyplot(fig)
+# ======================
+# HEADER
+# ======================
+st.markdown("<div class='title-box'><h1>🌙☀️ Bulan & Matahari Vision</h1><h4>AI Cosmic Classification Dashboard</h4></div>", unsafe_allow_html=True)
 
-# -------------------------------
-# CHART 2: Profit vs Sales Scatter
-# -------------------------------
-st.subheader("💸 Hubungan Profit vs Sales")
-if PLOTLY_AVAILABLE:
-    fig2 = px.scatter(
-        df, x='Sales', y='Profit',
-        size='Quantity' if 'Quantity' in df.columns else None,
-        color='Region' if 'Region' in df.columns else None,
-        title="Profit vs Sales",
-        color_discrete_sequence=px.colors.qualitative.Vivid
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+# Sidebar
+st.sidebar.header("⚙️ Pengaturan Model")
+if classifier: st.sidebar.success(f"✅ Classifier aktif: {cls_info}")
+else: st.sidebar.warning("⚠️ Model .h5 belum ditemukan")
+
+if yolo: st.sidebar.success(f"✅ YOLO aktif: {yolo_info}")
+else: st.sidebar.info("YOLO tidak aktif (opsional)")
+
+mode = st.sidebar.radio("Pilih Mode:", ["Klasifikasi Kosmik", "Deteksi Objek", "Filter Gambar", "Analisis Warna"])
+
+# ======================
+# MAIN
+# ======================
+uploaded = st.file_uploader("📤 Unggah gambar bulan atau matahari", type=["jpg", "jpeg", "png"])
+
+if uploaded:
+    img = Image.open(uploaded).convert("RGB")
+    st.image(img, caption="Gambar diunggah", use_container_width=True)
+    st.markdown("---")
+
+    # ===== KLASIFIKASI =====
+    if mode == "Klasifikasi Kosmik":
+        if classifier is None:
+            st.error("Model classifier belum dimuat.")
+        else:
+            with st.spinner("🔎 Mendeteksi objek kosmik..."):
+                label, conf = predict_image(classifier, img)
+            if label in celestial_info:
+                info = celestial_info[label]
+                st.success(f"🎯 Hasil: {info['nama']} ({conf*100:.2f}%)")
+                st.markdown(f"""
+                <div class='result-box'>
+                    <b>🌌 Deskripsi:</b> {info['deskripsi']}<br>
+                    <b>💡 Fakta menarik:</b> {info['fakta']}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.warning(f"Hasil: {label} ({conf:.2%}) — tidak ditemukan di database.")
+
+    # ===== YOLO =====
+    elif mode == "Deteksi Objek":
+        if yolo is None:
+            st.error("Model YOLO tidak aktif.")
+        else:
+            with st.spinner("🧠 Mendeteksi objek kosmik..."):
+                result = yolo(img)
+                st.image(result[0].plot(), caption="Hasil Deteksi", use_container_width=True)
+
+    # ===== FILTER =====
+    elif mode == "Filter Gambar":
+        opt = st.selectbox("Pilih filter:", ["Asli", "Grayscale", "Blur", "Sharpen", "Edge"])
+        if opt == "Grayscale": out = ImageOps.grayscale(img)
+        elif opt == "Blur": out = img.filter(ImageFilter.BLUR)
+        elif opt == "Sharpen": out = img.filter(ImageFilter.SHARPEN)
+        elif opt == "Edge": out = img.filter(ImageFilter.FIND_EDGES)
+        else: out = img
+        st.image(out, caption=f"Hasil filter: {opt}", use_container_width=True)
+
+    # ===== WARNA =====
+    elif mode == "Analisis Warna":
+        small = img.resize((120, 120))
+        arr = np.array(small).reshape(-1, 3)
+        uniq, counts = np.unique((arr//32)*32, axis=0, return_counts=True)
+        top = uniq[np.argsort(-counts)[:5]]
+        st.write("🌈 Warna dominan:")
+        cols = st.columns(5)
+        for i, c in enumerate(top):
+            hexc = '#%02x%02x%02x' % tuple(c)
+            cols[i].markdown(f"<div style='background:{hexc};height:80px;border-radius:10px;'></div>", unsafe_allow_html=True)
+            cols[i].write(hexc)
+
 else:
-    fig, ax = plt.subplots()
-    ax.scatter(df['Sales'], df['Profit'], color='lightblue')
-    ax.set_xlabel("Sales")
-    ax.set_ylabel("Profit")
-    ax.set_title("Profit vs Sales")
-    st.pyplot(fig)
+    st.info("📁 Unggah gambar bulan atau matahari untuk mulai menganalisis.")
 
-# -------------------------------
-# CHART 3: Tren Penjualan Bulanan
-# -------------------------------
-st.subheader("🕐 Tren Penjualan Bulanan")
-date_col = None
-for col in df.columns:
-    if 'date' in col.lower():
-        date_col = col
-        break
-
-if date_col:
-    df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-    df_month = df.groupby(pd.Grouper(key=date_col, freq='M'))['Sales'].sum().reset_index()
-    if PLOTLY_AVAILABLE:
-        fig3 = px.line(
-            df_month, x=date_col, y='Sales',
-            markers=True,
-            title="Tren Penjualan Bulanan",
-            line_shape="spline",
-            color_discrete_sequence=["#9abaff"]
-        )
-        st.plotly_chart(fig3, use_container_width=True)
-    else:
-        fig, ax = plt.subplots()
-        ax.plot(df_month[date_col], df_month['Sales'], marker='o', color='#9abaff')
-        ax.set_title("Tren Penjualan Bulanan")
-        ax.set_xlabel("Bulan")
-        ax.set_ylabel("Penjualan")
-        plt.xticks(rotation=45)
-        st.pyplot(fig)
-else:
-    st.info("📅 Kolom tanggal tidak ditemukan. Tambahkan kolom seperti 'Order Date' agar tren bisa ditampilkan.")
-
-st.markdown("---")
-st.caption("✨ NightSky Dashboard • Dibuat dengan Streamlit, Plotly, dan cinta 🌙")
+# ======================
+# FOOTER
+# ======================
+st.markdown("<footer>🌙☀️ Bulan & Matahari Vision — by Reva 💜 | Built with Streamlit & TensorFlow</footer>", unsafe_allow_html=True)
