@@ -177,6 +177,5 @@ else:
 st.markdown("""
 <footer>
     🌌 <b>Sun & Moon Vision</b> • by Repa Cantikk 🪐<br>
-    Gambar apa pun bisa dianalisis — model otomatis menyesuaikan ukuran input 🌙
 </footer>
 """, unsafe_allow_html=True)
