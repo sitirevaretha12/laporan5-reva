@@ -12,7 +12,7 @@ import os
 st.set_page_config(page_title="🌙 Sun & Moon Classifier", layout="wide")
 
 # ==========================
-# CSS THEME (Night Sky Style)
+# CSS THEME (Night Sky)
 # ==========================
 st.markdown("""
     <style>
@@ -29,7 +29,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================
-# FUNGSI: Temukan model .h5
+# FUNGSI: Temukan file model
 # ==========================
 MODEL_FOLDER = "model"
 
@@ -80,10 +80,10 @@ object_info = {
 # HEADER
 # ==========================
 st.markdown("<div class='title'>🌙 Sun & Moon Vision</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>Klasifikasi Gambar Bulan & Matahari — Model Stabil dan Ringan</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Klasifikasi Gambar Bulan & Matahari — Bebas Ukuran, Anti Error</div>", unsafe_allow_html=True)
 
 # ==========================
-# SIDEBAR
+# SIDEBAR STATUS
 # ==========================
 st.sidebar.header("🔧 Status Model")
 if model is None:
@@ -100,16 +100,32 @@ else:
 uploaded_file = st.file_uploader("📤 Unggah gambar Bulan atau Matahari (.jpg .jpeg .png)", type=["jpg", "jpeg", "png"])
 
 # ==========================
-# PREPROCESS
+# PREPROCESS OTOMATIS (UKURAN APA PUN)
 # ==========================
-def preprocess_image(pil_img, size=(224, 224)):
-    img_resized = pil_img.resize(size)
+def preprocess_image(pil_img, model):
+    """
+    Fungsi ini otomatis menyesuaikan ukuran input dengan model.
+    Semua ukuran gambar diterima.
+    """
+    # Dapatkan ukuran input layer model (misal (128,128,3))
+    try:
+        input_shape = model.input_shape[1:3]
+        if input_shape is None or None in input_shape:
+            input_shape = (224, 224)
+    except Exception:
+        input_shape = (224, 224)
+    
+    # Resize otomatis sesuai input model
+    img_resized = pil_img.resize(input_shape)
     arr = image.img_to_array(img_resized)
     arr = np.expand_dims(arr, axis=0) / 255.0
     return arr
 
+# ==========================
+# PREDIKSI
+# ==========================
 def predict_image(model, pil_img):
-    arr = preprocess_image(pil_img)
+    arr = preprocess_image(pil_img, model)
     preds = model.predict(arr)
     idx = int(np.argmax(preds))
     confidence = float(np.max(preds))
@@ -117,7 +133,7 @@ def predict_image(model, pil_img):
     return label, confidence
 
 # ==========================
-# MAIN PROCESS
+# MAIN
 # ==========================
 if uploaded_file:
     try:
@@ -136,7 +152,7 @@ if uploaded_file:
             try:
                 label, conf = predict_image(model, img)
             except Exception as e:
-                st.error(f"Error saat prediksi: {e}")
+                st.error(f"❌ Error saat prediksi: {e}")
                 st.stop()
 
         if label not in object_info:
@@ -153,7 +169,7 @@ if uploaded_file:
             </div>
             """, unsafe_allow_html=True)
 else:
-    st.info("📁 Unggah gambar untuk memulai klasifikasi. Pastikan file model (.h5) sudah ada di folder 'model/'.")
+    st.info("📁 Unggah gambar apa pun untuk memulai klasifikasi. Ukuran gambar tidak dibatasi!")
 
 # ==========================
 # FOOTER
@@ -161,6 +177,6 @@ else:
 st.markdown("""
 <footer>
     🌌 <b>Sun & Moon Vision</b> • by Repa Cantikk 🪐<br>
-    Letakkan model klasifikasi kamu di folder <code>model/</code> (format .h5)
+    Gambar apa pun bisa dianalisis — model otomatis menyesuaikan ukuran input 🌙
 </footer>
 """, unsafe_allow_html=True)
