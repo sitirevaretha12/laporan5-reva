@@ -3,200 +3,231 @@ import tensorflow as tf
 from tensorflow.keras.preprocessing import image
 import numpy as np
 from PIL import Image, ImageOps, ImageFilter
-import glob, os
+import glob
+import os
 
-# Optional YOLO
+# Optional YOLO import
 try:
     from ultralytics import YOLO
     ULTRALYTICS_AVAILABLE = True
 except Exception:
     ULTRALYTICS_AVAILABLE = False
 
-# ======================
+# ==========================
 # PAGE CONFIG
-# ======================
-st.set_page_config(
-    page_title="🌙☀️ Celestial Vision",
-    layout="wide",
-    page_icon="✨"
-)
+# ==========================
+st.set_page_config(page_title="🌙☀️ Celestial Vision", layout="wide")
 
-# ======================
-# CSS CUSTOM
-# ======================
+# ==========================
+# CSS: Langit malam + Glass
+# ==========================
 st.markdown("""
 <style>
-.stApp {
-    background: linear-gradient(135deg, #0c1b3f 0%, #1f305e 50%, #f9d29d 100%);
-    color: #fff;
-    font-family: 'Poppins', sans-serif;
-}
-.title-box {
-    background: rgba(0,0,0,0.45);
-    padding: 20px;
-    border-radius: 20px;
-    text-align:center;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-}
-.result-card {
-    background: rgba(255,255,255,0.15);
-    padding: 18px;
-    border-radius: 16px;
-    margin-bottom: 15px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    transition: transform 0.3s;
-}
-.result-card:hover {
-    transform: scale(1.03);
-}
-footer {
-    text-align:center;
-    color:#ffec99;
-    margin-top:40px;
-}
+    .stApp {
+        background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+        font-family: 'Poppins', sans-serif;
+        color: #ffffff;
+    }
+    .title { text-align:center; color:#ffd700; font-size:40px; font-weight:700; margin-top:10px; }
+    .subtitle { text-align:center; color:#f0e68c; margin-bottom:20px; }
+    .result-box { background: rgba(0,0,0,0.6); padding:16px; border-radius:14px; box-shadow: 0 6px 18px rgba(0,0,0,0.5); }
+    footer { text-align:center; color:#f0e68c; margin-top:30px; padding:8px; border-radius:12px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ======================
-# HELPER FUNCTIONS
-# ======================
+# ==========================
+# HELPER: find model files
+# ==========================
 MODEL_FOLDER = "model"
-
 def find_first(pattern):
     files = glob.glob(os.path.join(MODEL_FOLDER, pattern))
     return files[0] if files else None
 
+# ==========================
+# LOAD CLASSIFIER & YOLO
+# ==========================
 @st.cache_resource
-def load_classifier():
-    path = find_first("*.h5")
-    if not path: return None, "Model .h5 tidak ditemukan"
+def load_classifier_model():
+    h5_path = find_first("*.h5")
+    if not h5_path:
+        return None, "no_h5"
     try:
-        model = tf.keras.models.load_model(path)
-        return model, f"Dimuat dari {path}"
+        model = tf.keras.models.load_model(h5_path)
+        return model, h5_path
     except Exception as e:
-        return None, str(e)
+        return None, f"error:{e}"
 
 @st.cache_resource
-def load_yolo():
-    if not ULTRALYTICS_AVAILABLE: return None, "YOLO tidak tersedia"
-    path = find_first("*.pt")
-    if not path: return None, "Model .pt tidak ditemukan"
+def load_yolo_model():
+    if not ULTRALYTICS_AVAILABLE:
+        return None, "ultralytics_missing"
+    pt_path = find_first("*.pt")
+    if not pt_path:
+        return None, "no_pt"
     try:
-        model = YOLO(path)
-        return model, f"Dimuat dari {path}"
+        yolo = YOLO(pt_path)
+        return yolo, f"Dimuat dari {pt_path}"
     except Exception as e:
-        return None, str(e)
+        return None, f"error:{e}"
 
-classifier, cls_info = load_classifier()
-yolo, yolo_info = load_yolo()
+classifier, cls_load_info = load_classifier_model()
+yolo_model, yolo_load_info = load_yolo_model()
 
-# ======================
-# DATA LABEL
-# ======================
-class_names = ["bulan","matahari"]
+# ==========================
+# CLASS NAMES
+# ==========================
+class_names = ["Bulan", "Matahari"]
+
+# ==========================
+# INFO DATABASE
+# ==========================
 celestial_info = {
-    "bulan": {"nama":"🌙 Bulan", "deskripsi":"Satelit alami Bumi.", "fakta":"Bulan mengatur pasang surut air laut."},
-    "matahari":{"nama":"☀️ Matahari", "deskripsi":"Bintang pusat tata surya.", "fakta":"Menyediakan cahaya & energi kehidupan."}
+    "Bulan": {
+        "nama": "🌙 Bulan",
+        "jenis": "Bulan Purnama, Bulan Sabit, Bulan Baru",
+        "fakta": "Bulan mengorbit Bumi setiap 27.3 hari dan mempengaruhi pasang surut air laut."
+    },
+    "Matahari": {
+        "nama": "☀️ Matahari",
+        "jenis": "Matahari Utama",
+        "fakta": "Matahari adalah bintang terdekat dengan Bumi dan sumber energi utama bagi kehidupan."
+    }
 }
 
-# ======================
-# PREPROCESS
-# ======================
-def preprocess_image(img, model):
-    try:
-        shape = model.input_shape[1:3]
-    except:
-        shape = (224,224)
-    img_resized = img.resize(shape)
-    arr = image.img_to_array(img_resized)
-    arr = np.expand_dims(arr, axis=0)/255.0
+# ==========================
+# UI HEADER
+# ==========================
+st.markdown("<div class='title'>🌙☀️ Celestial Vision</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Klasifikasi & Deteksi Bulan / Matahari</div>", unsafe_allow_html=True)
+
+# ==========================
+# SIDEBAR
+# ==========================
+st.sidebar.header("🔧 Status Model & Pengaturan")
+if classifier is None:
+    if cls_load_info=="no_h5": st.sidebar.error("❌ Classifier .h5 tidak ditemukan di folder 'model/'")
+    else: st.sidebar.error(f"❌ Gagal load classifier: {cls_load_info}")
+else:
+    st.sidebar.success(f"✅ Classifier dimuat: {cls_load_info}")
+
+if yolo_model is None:
+    if yolo_load_info=="ultralytics_missing": st.sidebar.info("⚠️ Ultralytics tidak terpasang — YOLO mati")
+    elif yolo_load_info=="no_pt": st.sidebar.info("⚠️ Model YOLO (.pt) tidak ditemukan — Deteksi nonaktif")
+    else: st.sidebar.warning(f"⚠️ YOLO load error: {yolo_load_info}")
+else:
+    st.sidebar.success(f"✅ YOLO dimuat: {yolo_load_info}")
+
+# Feature selection
+features = []
+if yolo_model: features.append("Deteksi Objek (YOLO)")
+if classifier: features.append("Klasifikasi & Info")
+features += ["Filter Gambar", "Analisis Warna"]
+
+mode = st.sidebar.selectbox("Pilih Mode:", features)
+
+# ==========================
+# UPLOAD IMAGE
+# ==========================
+uploaded_file = st.file_uploader("📤 Unggah gambar Bulan / Matahari", type=["jpg","jpeg","png"])
+
+# ==========================
+# HELPER FUNCTIONS
+# ==========================
+def preprocess_for_classifier(pil_img, size=(224,224)):
+    img_resized = pil_img.resize(size)
+    arr = image.img_to_array(img_resized)/255.0
+    arr = np.expand_dims(arr,0)
     return arr
 
-def predict_image(model, pil_img):
-    arr = preprocess_image(pil_img, model)
-    preds = model.predict(arr)
-    idx = np.argmax(preds)
+def predict_label(model, pil_img):
+    arr = preprocess_for_classifier(pil_img)
+    pred = model.predict(arr)
+    idx = int(np.argmax(pred))
+    score = float(np.max(pred))
     label = class_names[idx] if idx < len(class_names) else "unknown"
-    conf = float(np.max(preds))
-    return label, conf
+    return label, score
 
-# ======================
-# UI HEADER
-# ======================
-st.markdown("<div class='title-box'><h1>🌙☀️ Celestial Vision Dashboard</h1><h4>AI Analisis Bulan & Matahari</h4></div>", unsafe_allow_html=True)
+def get_dominant_colors_simple(pil_img, n_colors=5):
+    small = pil_img.resize((160,160))
+    arr = np.array(small).reshape(-1,3)
+    arr = (arr//16)*16
+    uniq, counts = np.unique(arr, axis=0, return_counts=True)
+    idx_sorted = np.argsort(-counts)
+    colors = uniq[idx_sorted][:n_colors]
+    return [tuple(map(int,c)) for c in colors]
 
-# Sidebar
-st.sidebar.header("⚙️ Pengaturan")
-if classifier: st.sidebar.success(f"✅ Classifier aktif: {cls_info}")
-else: st.sidebar.warning("⚠️ Classifier belum dimuat")
+# ==========================
+# PROCESS IMAGE
+# ==========================
+if uploaded_file:
+    try:
+        img = Image.open(uploaded_file).convert("RGB")
+    except Exception as e:
+        st.error(f"❌ Gagal membuka gambar: {e}")
+        st.stop()
 
-if yolo: st.sidebar.success(f"✅ YOLO aktif: {yolo_info}")
-else: st.sidebar.info("YOLO opsional")
-
-mode = st.sidebar.radio("Pilih Mode:", ["Klasifikasi", "Deteksi Objek", "Filter Gambar", "Analisis Warna"])
-
-# ======================
-# UPLOAD IMAGE
-# ======================
-uploaded = st.file_uploader("📤 Unggah gambar Bulan/Matahari", type=["jpg","jpeg","png"])
-
-if uploaded:
-    img = Image.open(uploaded).convert("RGB")
-    st.image(img, caption="Gambar diunggah", use_container_width=True)
+    st.image(img, caption="📷 Gambar diunggah", use_container_width=True)
     st.markdown("---")
 
-    # ===== KLASIFIKASI =====
-    if mode=="Klasifikasi":
-        if classifier is None: st.error("Model classifier belum dimuat.")
+    # MODE YOLO
+    if mode=="Deteksi Objek (YOLO)":
+        if yolo_model is None:
+            st.error("YOLO tidak tersedia")
         else:
-            label, conf = predict_image(classifier, img)
-            if label in celestial_info:
-                info = celestial_info[label]
+            with st.spinner("🔍 Deteksi YOLO..."):
+                try:
+                    results = yolo_model(img)
+                    result_img = results[0].plot()
+                    st.image(result_img, caption="🧩 Hasil Deteksi YOLO", use_container_width=True)
+                    boxes = results[0].boxes
+                    if boxes is not None and len(boxes)>0:
+                        st.write("Deteksi (label, confidence):")
+                        for b in boxes:
+                            lbl = int(b.cls.cpu().numpy()) if hasattr(b,"cls") else None
+                            conf = float(b.conf.cpu().numpy()) if hasattr(b,"conf") else None
+                            st.write(f"- Label: {lbl}, Confidence: {conf:.2f}" if lbl is not None else f"- Confidence: {conf:.2f}")
+                except Exception as e:
+                    st.error(f"YOLO gagal: {e}")
+
+    # MODE KLASIFIKASI
+    elif mode=="Klasifikasi & Info":
+        if classifier is None:
+            st.error("Classifier tidak tersedia")
+        else:
+            with st.spinner("🔎 Memprediksi..."):
+                try:
+                    label, score = predict_label(classifier,img)
+                except Exception as e:
+                    st.error(f"Prediksi gagal: {e}")
+                    st.stop()
+            info = celestial_info.get(label)
+            if info:
+                st.success(f"🎯 Terdeteksi: {info['nama']} — Confidence: {score*100:.2f}%")
                 st.markdown(f"""
-                <div class='result-card'>
-                <h3>{info['nama']} ({conf*100:.2f}%)</h3>
-                <b>Deskripsi:</b> {info['deskripsi']}<br>
-                <b>Fakta:</b> {info['fakta']}
+                <div class='result-box'>
+                    <h3>{info['nama']}</h3>
+                    <b>Jenis:</b> {info['jenis']}<br>
+                    <b>Fakta:</b> {info['fakta']}
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                st.warning(f"Hasil: {label} ({conf*100:.2f}%)")
+                st.warning(f"Hasil prediksi: {label} — Confidence: {score*100:.2f}%")
 
-    # ===== DETEKSI =====
-    elif mode=="Deteksi Objek":
-        if yolo is None: st.error("YOLO tidak aktif.")
-        else:
-            result = yolo(img)
-            st.image(result[0].plot(), caption="Hasil Deteksi", use_container_width=True)
-
-    # ===== FILTER =====
+    # FILTER GAMBAR
     elif mode=="Filter Gambar":
-        filter_opt = st.selectbox("Pilih filter:", ["Asli","Grayscale","Blur","Sharpen","Edge"])
-        intensity = st.slider("Intensitas filter", 1, 10, 3)
-        if filter_opt=="Grayscale": out = ImageOps.grayscale(img)
-        elif filter_opt=="Blur": out = img.filter(ImageFilter.GaussianBlur(radius=intensity))
-        elif filter_opt=="Sharpen": out = img.filter(ImageFilter.UnsharpMask(radius=intensity))
-        elif filter_opt=="Edge": out = img.filter(ImageFilter.FIND_EDGES)
+        option = st.selectbox("Pilih filter:", ["Asli","Grayscale","Blur","Sharpen","Edge"])
+        if option=="Grayscale": out = ImageOps.grayscale(img)
+        elif option=="Blur": out = img.filter(ImageFilter.BLUR)
+        elif option=="Sharpen": out = img.filter(ImageFilter.SHARPEN)
+        elif option=="Edge": out = img.filter(ImageFilter.FIND_EDGES)
         else: out = img
-        st.image(out, caption=f"Filter: {filter_opt}", use_container_width=True)
+        st.image(out, caption=f"Hasil filter: {option}", use_container_width=True)
 
-    # ===== WARNA =====
+    # ANALISIS WARNA
     elif mode=="Analisis Warna":
-        small = img.resize((120,120))
-        arr = np.array(small).reshape(-1,3)
-        uniq, counts = np.unique((arr//32)*32, axis=0, return_counts=True)
-        top = uniq[np.argsort(-counts)[:5]]
-        st.write("🌈 Warna dominan:")
-        cols = st.columns(5)
-        for i,c in enumerate(top):
-            hexc = '#%02x%02x%02x'%tuple(c)
-            cols[i].markdown(f"<div style='background:{hexc};height:80px;border-radius:12px;'></div>", unsafe_allow_html=True)
-            cols[i].write(hexc)
-
-else:
-    st.info("📁 Unggah gambar Bulan atau Matahari untuk mulai analisis.")
-
-# ======================
-# FOOTER
-# ======================
-st.markdown("<footer>🌙☀️ Celestial Vision — by Reva 💜 | Streamlit & TensorFlow</footer>", unsafe_allow_html=True)
+        colors = get_dominant_colors_simple(img, n_colors=5)
+        st.write("🌈 Warna dominan (hex):")
+        cols = st.columns(len(colors))
+        for i,c in enumerate(colors):
+            hexc = '#%02x%02x%02x' % c
+            cols[i].markdown(f"<div style='background:{hexc}; height
