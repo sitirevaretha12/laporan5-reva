@@ -1,7 +1,7 @@
-streamlit>=1.18.0
-tensorflow>=2.13.0
-Pillow>=9.0.0
-numpy>=1.21.0
-# ultralytics is optional; uncomment if you want YOLO detection and have compatible environment
-ultralytics>=8.2.0
+streamlit
+tensorflow
+pillow
+numpy
+ultralytics
+plotly
 
