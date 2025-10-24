@@ -1,7 +1,7 @@
 import os
 import warnings
 warnings.filterwarnings("ignore")  # 🔇 Matikan semua warning Python
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # 🔇 Matikan log TensorFlow (0=semua, 3=error saja)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # 🔇 Matikan log TensorFlow
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
@@ -142,4 +142,41 @@ st.sidebar.header("⚙️ Status Model")
 st.sidebar.info(cls_info)
 st.sidebar.info(yolo_info)
 
-mode = st.sidebar.radio("Pilih Mode:", ["Klasifika]()
+# Pilihan mode utama
+mode = st.sidebar.radio(
+    "Pilih Mode:",
+    ["Klasifikasi", "Deteksi Objek", "Filter Gambar", "Analisis Warna"]
+)
+
+# ======================
+# UPLOAD GAMBAR
+# ======================
+uploaded = st.file_uploader("📤 Unggah gambar Bulan atau Matahari", type=["jpg","jpeg","png"])
+
+if uploaded:
+    img = Image.open(uploaded).convert("RGB")
+    st.image(img, caption="📷 Gambar diunggah", use_container_width=True)
+    st.markdown("---")
+
+    # === MODE 1: KLASIFIKASI ===
+    if mode == "Klasifikasi":
+        if classifier is None:
+            st.error("Model .h5 belum dimuat.")
+        else:
+            label, conf = predict_image(classifier, img)
+            info = celestial_info.get(label, {"nama": label})
+            st.markdown(f"""
+            <div class='result-card'>
+            <h3>{info['nama']} ({conf*100:.2f}%)</h3>
+            <b>Deskripsi:</b> {info.get('deskripsi','-')}<br>
+            <b>Fakta:</b> {info.get('fakta','-')}
+            </div>
+            """, unsafe_allow_html=True)
+
+    # === MODE 2: DETEKSI OBJEK ===
+    elif mode == "Deteksi Objek":
+        if yolo is None:
+            st.error("Model YOLO belum dimuat.")
+        else:
+            results = yolo(img)
+            st.image(results[0].plot(), caption="🔍 Hasil Deteksi Objek",
