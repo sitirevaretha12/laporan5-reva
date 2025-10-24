@@ -5,15 +5,20 @@ import numpy as np
 from PIL import Image, ImageOps, ImageFilter
 import glob, os
 
-# Optional YOLO
+# ======================
+# YOLO Setup
+# ======================
 try:
     from ultralytics import YOLO
     ULTRALYTICS_AVAILABLE = True
 except Exception:
     ULTRALYTICS_AVAILABLE = False
 
+# Disable GPU if error occurs
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 # ======================
-# PAGE CONFIG
+# Page Config
 # ======================
 st.set_page_config(
     page_title="🌙☀️ Celestial Vision",
@@ -22,43 +27,20 @@ st.set_page_config(
 )
 
 # ======================
-# CSS CUSTOM
+# CSS Custom
 # ======================
 st.markdown("""
 <style>
-.stApp {
-    background: linear-gradient(135deg, #0c1b3f 0%, #1f305e 50%, #f9d29d 100%);
-    color: #fff;
-    font-family: 'Poppins', sans-serif;
-}
-.title-box {
-    background: rgba(0,0,0,0.45);
-    padding: 20px;
-    border-radius: 20px;
-    text-align:center;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-}
-.result-card {
-    background: rgba(255,255,255,0.15);
-    padding: 18px;
-    border-radius: 16px;
-    margin-bottom: 15px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    transition: transform 0.3s;
-}
-.result-card:hover {
-    transform: scale(1.03);
-}
-footer {
-    text-align:center;
-    color:#ffec99;
-    margin-top:40px;
-}
+.stApp {background: linear-gradient(135deg, #0c1b3f 0%, #1f305e 50%, #f9d29d 100%); color: #fff; font-family: 'Poppins', sans-serif;}
+.title-box {background: rgba(0,0,0,0.45); padding: 20px; border-radius: 20px; text-align:center; box-shadow: 0 4px 12px rgba(0,0,0,0.5);}
+.result-card {background: rgba(255,255,255,0.15); padding: 18px; border-radius: 16px; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: transform 0.3s;}
+.result-card:hover {transform: scale(1.03);}
+footer {text-align:center; color:#ffec99; margin-top:40px;}
 </style>
 """, unsafe_allow_html=True)
 
 # ======================
-# HELPER FUNCTIONS
+# Helper Functions
 # ======================
 MODEL_FOLDER = "model"
 
@@ -91,7 +73,7 @@ classifier, cls_info = load_classifier()
 yolo, yolo_info = load_yolo()
 
 # ======================
-# DATA LABEL
+# Class Names & Info
 # ======================
 class_names = ["bulan","matahari"]
 celestial_info = {
@@ -100,7 +82,7 @@ celestial_info = {
 }
 
 # ======================
-# PREPROCESS
+# Image Preprocess
 # ======================
 def preprocess_image(img, model):
     try:
@@ -121,7 +103,7 @@ def predict_image(model, pil_img):
     return label, conf
 
 # ======================
-# UI HEADER
+# UI Header
 # ======================
 st.markdown("<div class='title-box'><h1>🌙☀️ Celestial Vision Dashboard</h1><h4>AI Analisis Bulan & Matahari</h4></div>", unsafe_allow_html=True)
 
@@ -136,7 +118,7 @@ else: st.sidebar.info("YOLO opsional")
 mode = st.sidebar.radio("Pilih Mode:", ["Klasifikasi", "Deteksi Objek", "Filter Gambar", "Analisis Warna"])
 
 # ======================
-# UPLOAD IMAGE
+# Upload Image
 # ======================
 uploaded = st.file_uploader("📤 Unggah gambar Bulan/Matahari", type=["jpg","jpeg","png"])
 
@@ -145,7 +127,7 @@ if uploaded:
     st.image(img, caption="Gambar diunggah", use_container_width=True)
     st.markdown("---")
 
-    # ===== KLASIFIKASI =====
+    # Klasifikasi
     if mode=="Klasifikasi":
         if classifier is None: st.error("Model classifier belum dimuat.")
         else:
@@ -162,14 +144,14 @@ if uploaded:
             else:
                 st.warning(f"Hasil: {label} ({conf*100:.2f}%)")
 
-    # ===== DETEKSI =====
+    # Deteksi Objek
     elif mode=="Deteksi Objek":
-        if yolo is None: st.error("YOLO tidak aktif.")
+        if yolo is None: st.error("YOLO belum dimuat.")
         else:
-            result = yolo(img)
-            st.image(result[0].plot(), caption="Hasil Deteksi", use_container_width=True)
+            results = yolo(img)
+            st.image(results[0].plot(), caption="Hasil Deteksi", use_container_width=True)
 
-    # ===== FILTER =====
+    # Filter Gambar
     elif mode=="Filter Gambar":
         filter_opt = st.selectbox("Pilih filter:", ["Asli","Grayscale","Blur","Sharpen","Edge"])
         intensity = st.slider("Intensitas filter", 1, 10, 3)
@@ -180,7 +162,7 @@ if uploaded:
         else: out = img
         st.image(out, caption=f"Filter: {filter_opt}", use_container_width=True)
 
-    # ===== WARNA =====
+    # Analisis Warna
     elif mode=="Analisis Warna":
         small = img.resize((120,120))
         arr = np.array(small).reshape(-1,3)
@@ -196,8 +178,5 @@ if uploaded:
 else:
     st.info("📁 Unggah gambar Bulan atau Matahari untuk mulai analisis.")
 
-# ======================
-# FOOTER
-# ======================
+# Footer
 st.markdown("<footer>🌙☀️ Celestial Vision — by Reva 💜 | Streamlit & TensorFlow</footer>", unsafe_allow_html=True)
-
