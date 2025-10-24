@@ -4,4 +4,4 @@ pillow
 numpy
 ultralytics
 plotly
-
+opencv-python-headless
