@@ -200,4 +200,4 @@ else:
 # FOOTER
 # ======================
 st.markdown("<footer>🌙☀️ Celestial Vision — by Reva 💜 | Streamlit & TensorFlow</footer>", unsafe_allow_html=True)
-buatkan model h5 dan pt nya dibuang
+
