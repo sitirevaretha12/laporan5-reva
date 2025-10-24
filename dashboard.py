@@ -1,4 +1,5 @@
 import os
+import glob
 import warnings
 warnings.filterwarnings("ignore")
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -10,9 +11,8 @@ import tensorflow as tf
 from tensorflow.keras.preprocessing import image
 import numpy as np
 from PIL import Image, ImageOps, ImageFilter
-import glob
 
-# Coba import YOLO tanpa crash
+# YOLO import
 try:
     from ultralytics import YOLO
     YOLO_AVAILABLE = True
@@ -20,7 +20,7 @@ except Exception:
     YOLO_AVAILABLE = False
 
 # ==========================
-# CSS & UI
+# UI & CSS
 # ==========================
 st.set_page_config(page_title="🌙☀️ Celestial Vision", layout="wide", page_icon="✨")
 st.markdown("""
@@ -34,7 +34,7 @@ footer { text-align:center; color:#ffec99; margin-top:40px;}
 """, unsafe_allow_html=True)
 
 # ==========================
-# Load models
+# Folder Model
 # ==========================
 MODEL_FOLDER = "model"
 
@@ -42,17 +42,9 @@ def find_first(pattern):
     files = glob.glob(os.path.join(MODEL_FOLDER, pattern))
     return files[0] if files else None
 
-@st.cache_resource
-def load_classifier():
-    h5_path = find_first("*.h5")
-    if not h5_path:
-        return None, "❌ Model .h5 tidak ditemukan"
-    try:
-        model = tf.keras.models.load_model(h5_path, compile=False)
-        return model, f"✅ Classifier dimuat: {os.path.basename(h5_path)}"
-    except Exception as e:
-        return None, f"⚠️ Gagal memuat .h5: {e}"
-
+# ==========================
+# Load YOLO
+# ==========================
 @st.cache_resource
 def load_yolo():
     if not YOLO_AVAILABLE:
@@ -67,10 +59,26 @@ def load_yolo():
         return None, f"⚠️ Gagal memuat YOLO: {e}"
 
 yolo_model, yolo_info = load_yolo()
-classifier, cls_info = load_classifier()
 
 # ==========================
-# Label dan Deskripsi
+# Load multiple classifiers
+# ==========================
+@st.cache_resource
+def load_classifiers():
+    classifiers = {}
+    h5_files = glob.glob(os.path.join(MODEL_FOLDER, "*.h5"))
+    for f in h5_files:
+        try:
+            model = tf.keras.models.load_model(f, compile=False)
+            classifiers[os.path.basename(f)] = model
+        except Exception as e:
+            print(f"⚠️ Gagal memuat {f}: {e}")
+    return classifiers
+
+classifiers = load_classifiers()
+
+# ==========================
+# Class Labels & Info
 # ==========================
 class_names = ["Bulan", "Matahari"]
 class_info = {
@@ -85,11 +93,23 @@ st.markdown("<div class='title-box'><h1>🌙☀️ Celestial Vision Dashboard</h
 
 # Sidebar
 st.sidebar.header("⚙️ Status Model")
-st.sidebar.info(cls_info)
+st.sidebar.info(f"Classifier: {len(classifiers)} model ditemukan")
 st.sidebar.info(yolo_info)
 
-mode = st.sidebar.radio("Pilih Mode:", ["Klasifikasi Gambar", "Deteksi Objek (YOLO)"])
+menu = st.sidebar.radio("Pilih Mode:", ["Klasifikasi Gambar", "Deteksi Objek (YOLO)"])
 
+# Pilih classifier jika ada
+if classifiers:
+    classifier_name = st.sidebar.selectbox("Pilih Model Klasifikasi:", list(classifiers.keys()))
+    classifier = classifiers[classifier_name]
+    st.sidebar.success(f"✅ Model dipilih: {classifier_name}")
+else:
+    st.sidebar.warning("❌ Tidak ada model .h5 ditemukan")
+    classifier = None
+
+# ==========================
+# Upload Image
+# ==========================
 uploaded_file = st.file_uploader("📤 Unggah Gambar", type=["jpg","jpeg","png"])
 
 if uploaded_file:
@@ -97,23 +117,20 @@ if uploaded_file:
     st.image(img, caption="📷 Gambar diunggah", use_container_width=True)
     st.markdown("---")
 
-    if mode == "Klasifikasi Gambar":
+    if menu == "Klasifikasi Gambar":
         if classifier is None:
             st.error("Model classifier belum dimuat")
         else:
-            # Preprocessing
             img_resized = img.resize((224,224))
             arr = image.img_to_array(img_resized)
             arr = np.expand_dims(arr, axis=0)/255.0
 
-            # Prediksi
             pred = classifier.predict(arr, verbose=0)
             idx = np.argmax(pred)
-            label = class_names[idx]
+            label = class_names[idx] if idx < len(class_names) else "Unknown"
             conf = np.max(pred)
-            info = class_info[label]
+            info = class_info.get(label, {"deskripsi":"-", "fakta":"-"})
 
-            # Tampilkan hasil
             st.markdown(f"""
             <div class='result-card'>
             <h3>Hasil Prediksi: {label} ({conf*100:.2f}%)</h3>
@@ -122,7 +139,7 @@ if uploaded_file:
             </div>
             """, unsafe_allow_html=True)
 
-    elif mode == "Deteksi Objek (YOLO)":
+    elif menu == "Deteksi Objek (YOLO)":
         if yolo_model is None:
             st.error("YOLO belum dimuat")
         else:
@@ -132,5 +149,7 @@ if uploaded_file:
 else:
     st.info("📁 Silakan unggah gambar untuk mulai analisis.")
 
+# ==========================
 # Footer
+# ==========================
 st.markdown("<footer>🌙☀️ Celestial Vision — by Reva 💜 | Streamlit & TensorFlow</footer>", unsafe_allow_html=True)
