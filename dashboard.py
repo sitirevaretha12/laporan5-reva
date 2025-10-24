@@ -61,7 +61,7 @@ def load_classifier():
 @st.cache_resource
 def load_yolo():
     if not ULTRALYTICS_AVAILABLE: return None, "YOLO tidak tersedia"
-    path = find_first("*.pt")
+    path = find_first("reva_best.pt")
     if not path: return None, "Model .pt tidak ditemukan"
     try:
         model = YOLO(path)
